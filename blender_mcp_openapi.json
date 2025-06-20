@@ -1,0 +1,663 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Blender MCP API",
+    "version": "1.0.0",
+    "description": "API for controlling Blender via Blender MCP."
+  },
+  "servers": [
+    {
+      "url": "http://blender-mcp-api:5005",
+      "description": "Local Blender MCP API Server"
+    }
+  ],
+  "paths": {
+    "/get_scene_info": {
+      "get": {
+        "summary": "Get detailed information about the current Blender scene.",
+        "operationId": "get_scene_info",
+        "responses": {
+          "200": {
+            "description": "Scene information.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get_object_info": {
+      "post": {
+        "summary": "Get detailed information about a specific object in the Blender scene.",
+        "operationId": "get_object_info",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "object_name": {
+                    "type": "string",
+                    "description": "The name of the object to get information about."
+                  }
+                },
+                "required": [
+                  "object_name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Object information.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    },
+    "/get_viewport_screenshot": {
+      "post": {
+        "summary": "Capture a screenshot of the current Blender 3D viewport.",
+        "operationId": "get_viewport_screenshot",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "max_size": {
+                    "type": "integer",
+                    "description": "Maximum size in pixels for the largest dimension (default: 800)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Screenshot status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/execute_blender_code": {
+      "post": {
+        "summary": "Execute arbitrary Python code in Blender.",
+        "operationId": "execute_blender_code",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "The Python code to execute."
+                  }
+                },
+                "required": [
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Code execution result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    },
+    "/get_polyhaven_categories": {
+      "post": {
+        "summary": "Get a list of categories for a specific asset type on Polyhaven.",
+        "operationId": "get_polyhaven_categories",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "asset_type": {
+                    "type": "string",
+                    "description": "The type of asset to get categories for (hdris, textures, models, all)."
+                  }
+                },
+                "required": [
+                  "asset_type"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Polyhaven categories.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    },
+    "/search_polyhaven_assets": {
+      "post": {
+        "summary": "Search for assets on Polyhaven with optional filtering.",
+        "operationId": "search_polyhaven_assets",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "asset_type": {
+                    "type": "string",
+                    "description": "Type of assets to search for (hdris, textures, models, all)."
+                  },
+                  "categories": {
+                    "type": "string",
+                    "description": "Optional comma-separated list of categories to filter by."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Polyhaven assets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_polyhaven_asset": {
+      "post": {
+        "summary": "Download and import a Polyhaven asset into Blender.",
+        "operationId": "download_polyhaven_asset",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "asset_id": {
+                    "type": "string",
+                    "description": "The ID of the asset to download."
+                  },
+                  "asset_type": {
+                    "type": "string",
+                    "description": "The type of asset (hdris, textures, models)."
+                  },
+                  "resolution": {
+                    "type": "string",
+                    "description": "The resolution to download (e.g., 1k, 2k, 4k)."
+                  },
+                  "file_format": {
+                    "type": "string",
+                    "description": "Optional file format (e.g., hdr, exr for HDRIs; jpg, png for textures; gltf, fbx for models)."
+                  }
+                },
+                "required": [
+                  "asset_id",
+                  "asset_type"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Download and import status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    },
+    "/set_texture": {
+      "post": {
+        "summary": "Apply a previously downloaded Polyhaven texture to an object.",
+        "operationId": "set_texture",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "object_name": {
+                    "type": "string",
+                    "description": "Name of the object to apply the texture to."
+                  },
+                  "texture_id": {
+                    "type": "string",
+                    "description": "ID of the Polyhaven texture to apply (must be downloaded first)."
+                  }
+                },
+                "required": [
+                  "object_name",
+                  "texture_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Texture application status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    },
+    "/get_polyhaven_status": {
+      "get": {
+        "summary": "Check if PolyHaven integration is enabled in Blender.",
+        "operationId": "get_polyhaven_status",
+        "responses": {
+          "200": {
+            "description": "PolyHaven status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get_hyper3d_status": {
+      "get": {
+        "summary": "Check if Hyper3D Rodin integration is enabled in Blender.",
+        "operationId": "get_hyper3d_status",
+        "responses": {
+          "200": {
+            "description": "Hyper3D Rodin status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/generate_hyper3d_model_via_text": {
+      "post": {
+        "summary": "Generate 3D asset using Hyper3D by giving description of the desired asset.",
+        "operationId": "generate_hyper3d_model_via_text",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text_prompt": {
+                    "type": "string",
+                    "description": "A short description of the desired model in English."
+                  },
+                  "bbox_condition": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "description": "Optional. Controls the ratio between [Length, Width, Height] of the model."
+                  }
+                },
+                "required": [
+                  "text_prompt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generation job details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    },
+    "/generate_hyper3d_model_via_images": {
+      "post": {
+        "summary": "Generate 3D asset using Hyper3D by giving images of the wanted asset.",
+        "operationId": "generate_hyper3d_model_via_images",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "input_image_paths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "The absolute paths of input images. Required if Hyper3D Rodin in MAIN_SITE mode."
+                  },
+                  "input_image_urls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "The URLs of input images. Required if Hyper3D Rodin in FAL_AI mode."
+                  },
+                  "bbox_condition": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "description": "Optional. Controls the ratio between [Length, Width, Height] of the model."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generation job details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    },
+    "/poll_rodin_job_status": {
+      "post": {
+        "summary": "Check if the Hyper3D Rodin generation task is completed.",
+        "operationId": "poll_rodin_job_status",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "description": "For Hyper3D Rodin mode FAL_AI: The request_id given in the generate model step."
+                  },
+                  "subscription_key": {
+                    "type": "string",
+                    "description": "For Hyper3D Rodin mode MAIN_SITE: The subscription_key given in the generate model step."
+                  }
+                },
+                "required": [
+                  "request_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    },
+    "/import_generated_asset": {
+      "post": {
+        "summary": "Import the asset generated by Hyper3D Rodin after the generation task is completed.",
+        "operationId": "import_generated_asset",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the object in scene."
+                  },
+                  "request_id": {
+                    "type": "string",
+                    "description": "For Hyper3D Rodin mode FAL_AI: The request_id given in the generate model step."
+                  },
+                  "task_uuid": {
+                    "type": "string",
+                    "description": "For Hyper3D Rodin mode MAIN_SITE: The task_uuid given in the generate model step."
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    },
+    "/get_sketchfab_status": {
+      "get": {
+        "summary": "Check if Sketchfab integration is enabled in Blender.",
+        "operationId": "get_sketchfab_status",
+        "responses": {
+          "200": {
+            "description": "Sketchfab status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search_sketchfab_models": {
+      "post": {
+        "summary": "Search for models on Sketchfab with optional filtering.",
+        "operationId": "search_sketchfab_models",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "Text to search for."
+                  },
+                  "categories": {
+                    "type": "string",
+                    "description": "Optional comma-separated list of categories."
+                  },
+                  "count": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return (default 20)."
+                  },
+                  "downloadable": {
+                    "type": "boolean",
+                    "description": "Whether to include only downloadable models (default True)."
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    },
+    "/download_sketchfab_model": {
+      "post": {
+        "summary": "Download and import a Sketchfab model by its UID.",
+        "operationId": "download_sketchfab_model",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "string",
+                    "description": "The unique identifier of the Sketchfab model."
+                  }
+                },
+                "required": [
+                  "uid"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Download status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input."
+          }
+        }
+      }
+    }
+  }
+} 

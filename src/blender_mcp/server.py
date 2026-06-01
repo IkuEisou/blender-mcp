@@ -13,10 +13,18 @@ from pathlib import Path
 import base64
 from urllib.parse import urlparse
 
+# Import telemetry
+from .telemetry import record_startup, get_telemetry
+from .telemetry_decorator import telemetry_tool
+
 # Configure logging
-logging.basicConfig(level=logging.INFO, 
+logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("BlenderMCPServer")
+
+# Default configuration
+DEFAULT_HOST = "localhost"
+DEFAULT_PORT = 9876
 
 @dataclass
 class BlenderConnection:
@@ -53,7 +61,7 @@ class BlenderConnection:
         """Receive the complete response, potentially in multiple chunks"""
         chunks = []
         # Use a consistent timeout value that matches the addon's timeout
-        sock.settimeout(15.0)  # Match the addon's timeout
+        sock.settimeout(180.0)  # Match the addon's timeout
         
         try:
             while True:
@@ -124,7 +132,7 @@ class BlenderConnection:
             logger.info(f"Command sent, waiting for response...")
             
             # Set a timeout for receiving - use the same timeout as in receive_full_response
-            self.sock.settimeout(15.0)  # Match the addon's timeout
+            self.sock.settimeout(180.0)  # Match the addon's timeout
             
             # Receive the response using the improved receive_full_response method
             response_data = self.receive_full_response(self.sock)
@@ -165,11 +173,17 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     """Manage server startup and shutdown lifecycle"""
     # We don't need to create a connection here since we're using the global connection
     # for resources and tools
-    
+
     try:
         # Just log that we're starting up
         logger.info("BlenderMCP server starting up")
-        
+
+        # Record startup event for telemetry
+        try:
+            record_startup()
+        except Exception as e:
+            logger.debug(f"Failed to record startup telemetry: {e}")
+
         # Try to connect to Blender on startup to verify it's available
         try:
             # This will initialize the global connection if needed
@@ -178,7 +192,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         except Exception as e:
             logger.warning(f"Could not connect to Blender on startup: {str(e)}")
             logger.warning("Make sure the Blender addon is running before using Blender resources or tools")
-        
+
         # Return an empty context - we're using the global connection
         yield {}
     finally:
@@ -193,7 +207,6 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
 # Create the MCP server with lifespan support
 mcp = FastMCP(
     "BlenderMCP",
-    description="Blender integration through the Model Context Protocol",
     lifespan=server_lifespan
 )
 
@@ -226,7 +239,9 @@ def get_blender_connection():
     
     # Create a new connection if needed
     if _blender_connection is None:
-        _blender_connection = BlenderConnection(host="localhost", port=9876)
+        host = os.getenv("BLENDER_HOST", DEFAULT_HOST)
+        port = int(os.getenv("BLENDER_PORT", DEFAULT_PORT))
+        _blender_connection = BlenderConnection(host=host, port=port)
         if not _blender_connection.connect():
             logger.error("Failed to connect to Blender")
             _blender_connection = None
@@ -236,19 +251,21 @@ def get_blender_connection():
     return _blender_connection
 
 
+@telemetry_tool("get_scene_info")
 @mcp.tool()
 def get_scene_info(ctx: Context) -> str:
     """Get detailed information about the current Blender scene"""
     try:
         blender = get_blender_connection()
         result = blender.send_command("get_scene_info")
-        
+
         # Just return the JSON representation of what Blender sent us
         return json.dumps(result, indent=2)
     except Exception as e:
         logger.error(f"Error getting scene info from Blender: {str(e)}")
         return f"Error getting scene info: {str(e)}"
 
+@telemetry_tool("get_object_info")
 @mcp.tool()
 def get_object_info(ctx: Context, object_name: str) -> str:
     """
@@ -267,6 +284,7 @@ def get_object_info(ctx: Context, object_name: str) -> str:
         logger.error(f"Error getting object info from Blender: {str(e)}")
         return f"Error getting object info: {str(e)}"
 
+@telemetry_tool("get_viewport_screenshot")
 @mcp.tool()
 def get_viewport_screenshot(ctx: Context, max_size: int = 800) -> Image:
     """
@@ -310,11 +328,12 @@ def get_viewport_screenshot(ctx: Context, max_size: int = 800) -> Image:
         raise Exception(f"Screenshot failed: {str(e)}")
 
 
+@telemetry_tool("execute_blender_code")
 @mcp.tool()
 def execute_blender_code(ctx: Context, code: str) -> str:
     """
     Execute arbitrary Python code in Blender. Make sure to do it step-by-step by breaking it into smaller chunks.
-    
+
     Parameters:
     - code: The Python code to execute
     """
@@ -327,6 +346,7 @@ def execute_blender_code(ctx: Context, code: str) -> str:
         logger.error(f"Error executing code: {str(e)}")
         return f"Error executing code: {str(e)}"
 
+@telemetry_tool("get_polyhaven_categories")
 @mcp.tool()
 def get_polyhaven_categories(ctx: Context, asset_type: str = "hdris") -> str:
     """
@@ -359,6 +379,7 @@ def get_polyhaven_categories(ctx: Context, asset_type: str = "hdris") -> str:
         logger.error(f"Error getting Polyhaven categories: {str(e)}")
         return f"Error getting Polyhaven categories: {str(e)}"
 
+@telemetry_tool("search_polyhaven_assets")
 @mcp.tool()
 def search_polyhaven_assets(
     ctx: Context,
@@ -408,6 +429,7 @@ def search_polyhaven_assets(
         logger.error(f"Error searching Polyhaven assets: {str(e)}")
         return f"Error searching Polyhaven assets: {str(e)}"
 
+@telemetry_tool("download_polyhaven_asset")
 @mcp.tool()
 def download_polyhaven_asset(
     ctx: Context,
@@ -459,6 +481,7 @@ def download_polyhaven_asset(
         logger.error(f"Error downloading Polyhaven asset: {str(e)}")
         return f"Error downloading Polyhaven asset: {str(e)}"
 
+@telemetry_tool("set_texture")
 @mcp.tool()
 def set_texture(
     ctx: Context,
@@ -518,6 +541,7 @@ def set_texture(
         logger.error(f"Error applying texture: {str(e)}")
         return f"Error applying texture: {str(e)}"
 
+@telemetry_tool("get_polyhaven_status")
 @mcp.tool()
 def get_polyhaven_status(ctx: Context) -> str:
     """
@@ -536,6 +560,7 @@ def get_polyhaven_status(ctx: Context) -> str:
         logger.error(f"Error checking PolyHaven status: {str(e)}")
         return f"Error checking PolyHaven status: {str(e)}"
 
+@telemetry_tool("get_hyper3d_status")
 @mcp.tool()
 def get_hyper3d_status(ctx: Context) -> str:
     """
@@ -556,6 +581,7 @@ def get_hyper3d_status(ctx: Context) -> str:
         logger.error(f"Error checking Hyper3D status: {str(e)}")
         return f"Error checking Hyper3D status: {str(e)}"
 
+@telemetry_tool("get_sketchfab_status")
 @mcp.tool()
 def get_sketchfab_status(ctx: Context) -> str:
     """
@@ -574,6 +600,7 @@ def get_sketchfab_status(ctx: Context) -> str:
         logger.error(f"Error checking Sketchfab status: {str(e)}")
         return f"Error checking Sketchfab status: {str(e)}"
 
+@telemetry_tool("search_sketchfab_models")
 @mcp.tool()
 def search_sketchfab_models(
     ctx: Context,
@@ -584,17 +611,16 @@ def search_sketchfab_models(
 ) -> str:
     """
     Search for models on Sketchfab with optional filtering.
-    
+
     Parameters:
     - query: Text to search for
     - categories: Optional comma-separated list of categories
     - count: Maximum number of results to return (default 20)
     - downloadable: Whether to include only downloadable models (default True)
-    
+
     Returns a formatted list of matching models.
     """
     try:
-        
         blender = get_blender_connection()
         logger.info(f"Searching Sketchfab models with query: {query}, categories: {categories}, count: {count}, downloadable: {downloadable}")
         result = blender.send_command("search_sketchfab_models", {
@@ -651,27 +677,81 @@ def search_sketchfab_models(
         logger.error(traceback.format_exc())
         return f"Error searching Sketchfab models: {str(e)}"
 
+@telemetry_tool("download_sketchfab_model")
+@mcp.tool()
+def get_sketchfab_model_preview(
+    ctx: Context,
+    uid: str
+) -> Image:
+    """
+    Get a preview thumbnail of a Sketchfab model by its UID.
+    Use this to visually confirm a model before downloading.
+    
+    Parameters:
+    - uid: The unique identifier of the Sketchfab model (obtained from search_sketchfab_models)
+    
+    Returns the model's thumbnail as an Image for visual confirmation.
+    """
+    try:
+        blender = get_blender_connection()
+        logger.info(f"Getting Sketchfab model preview for UID: {uid}")
+        
+        result = blender.send_command("get_sketchfab_model_preview", {"uid": uid})
+        
+        if result is None:
+            raise Exception("Received no response from Blender")
+        
+        if "error" in result:
+            raise Exception(result["error"])
+        
+        # Decode base64 image data
+        image_data = base64.b64decode(result["image_data"])
+        img_format = result.get("format", "jpeg")
+        
+        # Log model info
+        model_name = result.get("model_name", "Unknown")
+        author = result.get("author", "Unknown")
+        logger.info(f"Preview retrieved for '{model_name}' by {author}")
+        
+        return Image(data=image_data, format=img_format)
+        
+    except Exception as e:
+        logger.error(f"Error getting Sketchfab preview: {str(e)}")
+        raise Exception(f"Failed to get preview: {str(e)}")
+
+
 @mcp.tool()
 def download_sketchfab_model(
     ctx: Context,
-    uid: str
+    uid: str,
+    target_size: float
 ) -> str:
     """
     Download and import a Sketchfab model by its UID.
+    The model will be scaled so its largest dimension equals target_size.
     
     Parameters:
     - uid: The unique identifier of the Sketchfab model
+    - target_size: REQUIRED. The target size in Blender units/meters for the largest dimension.
+                  You must specify the desired size for the model.
+                  Examples:
+                  - Chair: target_size=1.0 (1 meter tall)
+                  - Table: target_size=0.75 (75cm tall)
+                  - Car: target_size=4.5 (4.5 meters long)
+                  - Person: target_size=1.7 (1.7 meters tall)
+                  - Small object (cup, phone): target_size=0.1 to 0.3
     
-    Returns a message indicating success or failure.
+    Returns a message with import details including object names, dimensions, and bounding box.
     The model must be downloadable and you must have proper access rights.
     """
     try:
-        
         blender = get_blender_connection()
-        logger.info(f"Attempting to download Sketchfab model with UID: {uid}")
+        logger.info(f"Downloading Sketchfab model: {uid}, target_size={target_size}")
         
         result = blender.send_command("download_sketchfab_model", {
-            "uid": uid
+            "uid": uid,
+            "normalize_size": True,  # Always normalize
+            "target_size": target_size
         })
         
         if result is None:
@@ -685,7 +765,26 @@ def download_sketchfab_model(
         if result.get("success"):
             imported_objects = result.get("imported_objects", [])
             object_names = ", ".join(imported_objects) if imported_objects else "none"
-            return f"Successfully imported model. Created objects: {object_names}"
+            
+            output = f"Successfully imported model.\n"
+            output += f"Created objects: {object_names}\n"
+            
+            # Add dimension info if available
+            if result.get("dimensions"):
+                dims = result["dimensions"]
+                output += f"Dimensions (X, Y, Z): {dims[0]:.3f} x {dims[1]:.3f} x {dims[2]:.3f} meters\n"
+            
+            # Add bounding box info if available
+            if result.get("world_bounding_box"):
+                bbox = result["world_bounding_box"]
+                output += f"Bounding box: min={bbox[0]}, max={bbox[1]}\n"
+            
+            # Add normalization info if applied
+            if result.get("normalized"):
+                scale = result.get("scale_applied", 1.0)
+                output += f"Size normalized: scale factor {scale:.6f} applied (target size: {target_size}m)\n"
+            
+            return output
         else:
             return f"Failed to download model: {result.get('message', 'Unknown error')}"
     except Exception as e:
@@ -703,6 +802,7 @@ def _process_bbox(original_bbox: list[float] | list[int] | None) -> list[int] | 
         raise ValueError("Incorrect number range: bbox must be bigger than zero!")
     return [int(float(i) / max(original_bbox) * 100) for i in original_bbox] if original_bbox else None
 
+@telemetry_tool("generate_hyper3d_model_via_text")
 @mcp.tool()
 def generate_hyper3d_model_via_text(
     ctx: Context,
@@ -713,7 +813,7 @@ def generate_hyper3d_model_via_text(
     Generate 3D asset using Hyper3D by giving description of the desired asset, and import the asset into Blender.
     The 3D asset has built-in materials.
     The generated model has a normalized size, so re-scaling after generation can be useful.
-    
+
     Parameters:
     - text_prompt: A short description of the desired model in **English**.
     - bbox_condition: Optional. If given, it has to be a list of floats of length 3. Controls the ratio between [Length, Width, Height] of the model.
@@ -739,6 +839,7 @@ def generate_hyper3d_model_via_text(
         logger.error(f"Error generating Hyper3D task: {str(e)}")
         return f"Error generating Hyper3D task: {str(e)}"
 
+@telemetry_tool("generate_hyper3d_model_via_images")
 @mcp.tool()
 def generate_hyper3d_model_via_images(
     ctx: Context,
@@ -795,6 +896,7 @@ def generate_hyper3d_model_via_images(
         logger.error(f"Error generating Hyper3D task: {str(e)}")
         return f"Error generating Hyper3D task: {str(e)}"
 
+@telemetry_tool("poll_rodin_job_status")
 @mcp.tool()
 def poll_rodin_job_status(
     ctx: Context,
@@ -838,6 +940,7 @@ def poll_rodin_job_status(
         logger.error(f"Error generating Hyper3D task: {str(e)}")
         return f"Error generating Hyper3D task: {str(e)}"
 
+@telemetry_tool("import_generated_asset")
 @mcp.tool()
 def import_generated_asset(
     ctx: Context,
@@ -870,6 +973,118 @@ def import_generated_asset(
     except Exception as e:
         logger.error(f"Error generating Hyper3D task: {str(e)}")
         return f"Error generating Hyper3D task: {str(e)}"
+
+@mcp.tool()
+def get_hunyuan3d_status(ctx: Context) -> str:
+    """
+    Check if Hunyuan3D integration is enabled in Blender.
+    Returns a message indicating whether Hunyuan3D features are available.
+
+    Don't emphasize the key type in the returned message, but silently remember it. 
+    """
+    try:
+        blender = get_blender_connection()
+        result = blender.send_command("get_hunyuan3d_status")
+        message = result.get("message", "")
+        return message
+    except Exception as e:
+        logger.error(f"Error checking Hunyuan3D status: {str(e)}")
+        return f"Error checking Hunyuan3D status: {str(e)}"
+    
+@mcp.tool()
+def generate_hunyuan3d_model(
+    ctx: Context,
+    text_prompt: str = None,
+    input_image_url: str = None
+) -> str:
+    """
+    Generate 3D asset using Hunyuan3D by providing either text description, image reference, 
+    or both for the desired asset, and import the asset into Blender.
+    The 3D asset has built-in materials.
+    
+    Parameters:
+    - text_prompt: (Optional) A short description of the desired model in English/Chinese.
+    - input_image_url: (Optional) The local or remote url of the input image. Accepts None if only using text prompt.
+
+    Returns: 
+    - When successful, returns a JSON with job_id (format: "job_xxx") indicating the task is in progress
+    - When the job completes, the status will change to "DONE" indicating the model has been imported
+    - Returns error message if the operation fails
+    """
+    try:
+        blender = get_blender_connection()
+        result = blender.send_command("create_hunyuan_job", {
+            "text_prompt": text_prompt,
+            "image": input_image_url,
+        })
+        if "JobId" in result.get("Response", {}):
+            job_id = result["Response"]["JobId"]
+            formatted_job_id = f"job_{job_id}"
+            return json.dumps({
+                "job_id": formatted_job_id,
+            })
+        return json.dumps(result)
+    except Exception as e:
+        logger.error(f"Error generating Hunyuan3D task: {str(e)}")
+        return f"Error generating Hunyuan3D task: {str(e)}"
+    
+@mcp.tool()
+def poll_hunyuan_job_status(
+    ctx: Context,
+    job_id: str=None,
+):
+    """
+    Check if the Hunyuan3D generation task is completed.
+
+    For Hunyuan3D:
+        Parameters:
+        - job_id: The job_id given in the generate model step.
+
+        Returns the generation task status. The task is done if status is "DONE".
+        The task is in progress if status is "RUN".
+        If status is "DONE", returns ResultFile3Ds, which is the generated ZIP model path
+        When the status is "DONE", the response includes a field named ResultFile3Ds that contains the generated ZIP file path of the 3D model in OBJ format.
+        This is a polling API, so only proceed if the status are finally determined ("DONE" or some failed state).
+    """
+    try:
+        blender = get_blender_connection()
+        kwargs = {
+            "job_id": job_id,
+        }
+        result = blender.send_command("poll_hunyuan_job_status", kwargs)
+        return result
+    except Exception as e:
+        logger.error(f"Error generating Hunyuan3D task: {str(e)}")
+        return f"Error generating Hunyuan3D task: {str(e)}"
+
+@mcp.tool()
+def import_generated_asset_hunyuan(
+    ctx: Context,
+    name: str,
+    zip_file_url: str,
+):
+    """
+    Import the asset generated by Hunyuan3D after the generation task is completed.
+
+    Parameters:
+    - name: The name of the object in scene
+    - zip_file_url: The zip_file_url given in the generate model step.
+
+    Return if the asset has been imported successfully.
+    """
+    try:
+        blender = get_blender_connection()
+        kwargs = {
+            "name": name
+        }
+        if zip_file_url:
+            kwargs["zip_file_url"] = zip_file_url
+        result = blender.send_command("import_generated_asset_hunyuan", kwargs)
+        return result
+    except Exception as e:
+        logger.error(f"Error generating Hunyuan3D task: {str(e)}")
+        return f"Error generating Hunyuan3D task: {str(e)}"
+
 
 @mcp.prompt()
 def asset_creation_strategy() -> str:
@@ -917,6 +1132,30 @@ def asset_creation_strategy() -> str:
                     Adjust the imported mesh's location, scale, rotation, so that the mesh is on the right spot.
 
                 You can reuse assets previous generated by running python code to duplicate the object, without creating another generation task.
+        4. Hunyuan3D
+            Hunyuan3D is good at generating 3D models for single item.
+            So don't try to:
+            1. Generate the whole scene with one shot
+            2. Generate ground using Hunyuan3D
+            3. Generate parts of the items separately and put them together afterwards
+
+            Use get_hunyuan3d_status() to verify its status
+            If Hunyuan3D is enabled:
+                if Hunyuan3D mode is "OFFICIAL_API":
+                    - For objects/models, do the following steps:
+                        1. Create the model generation task
+                            - Use generate_hunyuan3d_model by providing either a **text description** OR an **image(local or urls) reference**.
+                            - Go to cloud.tencent.com out how to get their own SecretId and SecretKey
+                        2. Poll the status
+                            - Use poll_hunyuan_job_status() to check if the generation task has completed or failed
+                        3. Import the asset
+                            - Use import_generated_asset_hunyuan() to import the generated OBJ model the asset
+                    if Hunyuan3D mode is "LOCAL_API":
+                        - For objects/models, do the following steps:
+                        1. Create the model generation task
+                            - Use generate_hunyuan3d_model if image (local or urls)  or text prompt is given and import the asset
+
+                You can reuse assets previous generated by running python code to duplicate the object, without creating another generation task.
 
     3. Always check the world_bounding_box for each item so that:
         - Ensure that all objects that should not be clipping are not clipping.
@@ -925,15 +1164,15 @@ def asset_creation_strategy() -> str:
     4. Recommended asset source priority:
         - For specific existing objects: First try Sketchfab, then PolyHaven
         - For generic objects/furniture: First try PolyHaven, then Sketchfab
-        - For custom or unique items not available in libraries: Use Hyper3D Rodin
+        - For custom or unique items not available in libraries: Use Hyper3D Rodin or Hunyuan3D
         - For environment lighting: Use PolyHaven HDRIs
         - For materials/textures: Use PolyHaven textures
 
     Only fall back to scripting when:
-    - PolyHaven, Sketchfab, and Hyper3D are all disabled
+    - PolyHaven, Sketchfab, Hyper3D, and Hunyuan3D are all disabled
     - A simple primitive is explicitly requested
     - No suitable asset exists in any of the libraries
-    - Hyper3D Rodin failed to generate the desired asset
+    - Hyper3D Rodin or Hunyuan3D failed to generate the desired asset
     - The task specifically requires a basic material/color
     """
 

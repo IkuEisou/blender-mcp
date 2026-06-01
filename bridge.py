@@ -23,7 +23,7 @@ class StdioProcessManager:
         self.queue = asyncio.Queue()
 
     async def start(self):
-        if self.proc is None or self.proc.poll() is not None:
+        if self.proc is None or self.proc.returncode is not None:
             self.proc = await asyncio.create_subprocess_exec(
                 "uvx", "blender-mcp",
                 stdin=asyncio.subprocess.PIPE,
@@ -67,7 +67,7 @@ async def sse_endpoint(request: Request):
                     line = await asyncio.wait_for(manager.queue.get(), timeout=1.0)
                     yield f"event: message\ndata: {line.strip()}\n\n"
                 except asyncio.TimeoutError:
-                    if manager.proc.poll() is not None:
+                    if manager.proc.returncode is not None:
                         break
                     yield ": ping\n\n"
         except asyncio.CancelledError:
